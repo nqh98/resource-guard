@@ -1,0 +1,692 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Resource Guard</title>
+<style>
+:root {
+  --bg: #f6f5f2; --panel: #ffffff; --line: #e4e1da; --text: #1d1c1a; --muted: #6d6a63;
+  --accent: #2f6fde; --mem: #8a4fd1; --ok: #1f8a4c; --warn: #b87300; --bad: #c8372d; --track: #ecebe6;
+  --temp: #d9622b;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #141412; --panel: #1d1d1a; --line: #2f2e2a; --text: #ecebe6; --muted: #9b988f;
+    --accent: #6b9cf0; --mem: #b58cf0; --ok: #4cc27f; --warn: #e7a733; --bad: #ee6a5f; --track: #2a2925;
+    --temp: #f08a55;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 1100px; margin: 0 auto; padding: 20px 16px 48px; }
+header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+header .spacer { flex: 1; }
+h1 { font-size: 20px; margin: 0; letter-spacing: -.01em; }
+h2 { font-size: 15px; margin: 28px 0 10px; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.pill { padding: 3px 10px; border-radius: 99px; font-size: 12px; font-weight: 600; background: var(--track); white-space: nowrap; }
+.pill.ok { color: var(--ok); } .pill.warn { color: var(--warn); } .pill.bad { color: var(--bad); }
+.muted { color: var(--muted); }
+.small { font-size: 12px; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.stat .label { font-size: 12px; color: var(--muted); }
+.stat .value { font-size: 28px; font-weight: 650; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.stat .sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.cores { display: flex; gap: 3px; height: 26px; align-items: flex-end; margin-top: 8px; }
+.cores span { flex: 1; background: var(--accent); border-radius: 2px; min-height: 2px; }
+.meter { height: 6px; background: var(--track); border-radius: 3px; margin-top: 10px; overflow: hidden; }
+.meter span { display: block; height: 100%; background: var(--mem); }
+.alert { border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; font-weight: 500; border: 1px solid; }
+.alert.bad { border-color: var(--bad); color: var(--bad); }
+.alert.warn { border-color: var(--warn); color: var(--warn); }
+.chart svg { width: 100%; height: 120px; display: block; }
+.legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.legend i { display: inline-block; width: 10px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+.fixes { display: grid; grid-template-columns: repeat(auto-fit, minmax(310px, 1fr)); gap: 12px; }
+.fix h3 { font-size: 14px; margin: 0 0 4px; display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.fix p { margin: 0 0 10px; color: var(--muted); font-size: 13px; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.subrow { display: flex; gap: 12px; align-items: center; justify-content: space-between; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+button, select, input[type=text] { font: inherit; color: var(--text); background: var(--panel);
+  border: 1px solid var(--line); border-radius: 7px; padding: 5px 11px; }
+button { cursor: pointer; font-weight: 500; white-space: nowrap; flex: none; }
+button:hover { border-color: var(--muted); }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.danger { color: var(--bad); }
+button.armed { background: var(--bad); border-color: var(--bad); color: #fff; }
+button.on { outline: 2px solid var(--accent); outline-offset: -2px; }
+button:disabled { opacity: .5; cursor: default; }
+input[type=text] { width: 100%; font-size: 12px; font-family: ui-monospace, monospace; }
+code, pre { font-family: ui-monospace, monospace; font-size: 12px; background: var(--track); border-radius: 4px; }
+code { padding: 1px 5px; }
+pre { padding: 8px 10px; margin: 8px 0; overflow-x: auto; white-space: pre; }
+.switch { position: relative; width: 38px; height: 22px; flex: none; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.switch span { position: absolute; inset: 0; background: var(--track); border-radius: 99px; cursor: pointer; border: 1px solid var(--line); }
+.switch span::after { content: ""; position: absolute; width: 16px; height: 16px; left: 2px; top: 2px; background: #fff; border-radius: 50%; box-shadow: 0 1px 2px #0003; }
+.switch input:checked + span { background: var(--ok); border-color: var(--ok); }
+.switch input:checked + span::after { transform: translateX(16px); }
+.switch input:disabled + span { opacity: .5; cursor: default; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+.seg button { border: 0; border-radius: 0; padding: 3px 10px; font-size: 12px; }
+.seg button.on { outline: none; background: var(--track); }
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; font-size: 12px; color: var(--muted); font-weight: 500; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+td { padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+tr.group { cursor: pointer; }
+tr.group:hover td { background: var(--track); }
+tr.proc td { font-size: 12px; background: var(--bg); }
+.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.bar { height: 6px; background: var(--track); border-radius: 3px; min-width: 60px; }
+.bar span { display: block; height: 100%; border-radius: 3px; }
+.tag { font-size: 11px; padding: 1px 6px; border-radius: 4px; background: var(--track); color: var(--ok); margin-left: 6px; white-space: nowrap; }
+.cmd { font-family: ui-monospace, monospace; color: var(--muted); max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.actions { white-space: nowrap; text-align: right; }
+.actions button { padding: 2px 8px; font-size: 12px; }
+.tablewrap { overflow-x: auto; }
+ul.tips { margin: 0; padding-left: 18px; } ul.tips li { margin: 4px 0; }
+ul.events { margin: 8px 0 0; padding-left: 18px; font-size: 12px; }
+[hidden] { display: none !important; }
+#toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg);
+  padding: 8px 14px; border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: calc(100% - 32px); }
+#toast.show { opacity: 1; }
+@media (max-width: 640px) { .cmd { max-width: 160px; } .hide-sm { display: none; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Resource Guard</h1>
+    <span id="status" class="pill" data-i18n="status_loading"></span>
+    <span id="updated" class="muted small"></span>
+    <span class="spacer"></span>
+    <button id="lang" class="small"></button>
+  </header>
+
+  <div id="alerts"></div>
+
+  <section class="stats">
+    <div class="panel stat"><div class="label">CPU</div><div class="value" id="cpu">–</div>
+      <div class="cores" id="cores"></div><div class="sub" id="load"></div></div>
+    <div class="panel stat"><div class="label" data-i18n="stat_ram"></div><div class="value" id="ram">–</div>
+      <div class="sub" id="ramSub"></div><div class="meter"><span id="ramBar" style="width:0"></span></div></div>
+    <div class="panel stat"><div class="label" data-i18n="stat_temp"></div><div class="value" id="temp">–</div>
+      <div class="sub" id="freq"></div></div>
+    <div class="panel stat"><div class="label" data-i18n="stat_pressure"></div><div class="value" id="psi">–</div>
+      <div class="sub" id="psiSub"></div></div>
+  </section>
+
+  <h2 data-i18n="chart_title"></h2>
+  <div class="panel chart">
+    <div class="legend">
+      <span><i style="background:var(--accent)"></i>CPU %</span>
+      <span><i style="background:var(--mem)"></i>RAM %</span>
+      <span id="legendTemp"><i style="background:var(--temp)"></i><span data-i18n="legend_temp"></span></span>
+    </div>
+    <svg id="chart" viewBox="0 0 300 100" preserveAspectRatio="none"></svg>
+  </div>
+
+  <h2 data-i18n="fixes"></h2>
+  <section class="fixes">
+    <div class="panel fix">
+      <h3><span data-i18n="guard_title"></span>
+        <label class="switch"><input type="checkbox" id="guardOn"><span></span></label></h3>
+      <p data-i18n="guard_desc"></p>
+      <div class="row small">
+        <span data-i18n="guard_nice"></span>
+        <select id="guardNice"><option>5</option><option>10</option><option>15</option><option>19</option></select>
+      </div>
+      <div class="small muted" id="guardInfo" style="margin-top:8px"></div>
+      <details style="margin-top:10px"><summary class="small muted" data-i18n="guard_lists"></summary>
+        <div class="small" style="margin-top:8px" data-i18n="guard_roots"></div>
+        <input type="text" id="guardRoots">
+        <div class="small" style="margin-top:8px" data-i18n="guard_names"></div>
+        <input type="text" id="guardNames">
+        <div class="row" style="margin-top:8px"><button id="saveLists" data-i18n="save_lists"></button></div>
+      </details>
+    </div>
+
+    <div class="panel fix">
+      <h3 data-i18n="limits_title"></h3>
+      <p id="limitsDesc"></p>
+      <div class="row small" id="cpuCapRow"><span data-i18n="cpu_cap"></span><select id="cpuQuota"></select></div>
+      <div class="row small" id="memCapRow" style="margin-top:8px"><span data-i18n="mem_cap"></span><select id="memHigh"></select></div>
+      <div class="row small" id="clampRow"><span data-i18n="clamp"></span><select id="macClamp"></select></div>
+
+      <div class="subrow">
+        <div class="small"><b data-i18n="terminal"></b> <span id="aliasState" class="pill"></span><br>
+          <span class="muted" id="aliasDesc"></span></div>
+        <button id="aliasBtn" class="primary"></button>
+      </div>
+
+      <div class="subrow" id="desktopRow">
+        <div class="small"><b>Claude Desktop</b> <span id="desktopState" class="pill"></span><br>
+          <span class="muted" data-i18n="desktop_desc"></span></div>
+        <label class="switch"><input type="checkbox" id="desktopCap"><span></span></label>
+      </div>
+    </div>
+
+    <div class="panel fix">
+      <h3><span data-i18n="rescue_title"></span>
+        <label class="switch"><input type="checkbox" id="rescueOn"><span></span></label></h3>
+      <p data-i18n="rescue_desc"></p>
+      <div class="row small"><span data-i18n="rescue_threshold"></span><select id="rescuePct"></select></div>
+      <ul class="events muted" id="rescueEvents"></ul>
+    </div>
+
+    <div class="panel fix">
+      <h3 data-i18n="power_title"></h3>
+      <p id="powerDesc"></p>
+      <div class="row" id="power"></div>
+    </div>
+
+    <div class="panel fix" id="swapCard">
+      <h3><span data-i18n="swap_title"></span> <span id="swapState" class="pill"></span></h3>
+      <p id="swapDesc"></p>
+      <div id="swapHowto">
+        <pre id="swapCmd">sudo apt install zram-tools
+echo -e "ALGO=zstd\nPERCENT=50" | sudo tee /etc/default/zramswap
+sudo systemctl restart zramswap</pre>
+        <button id="copySwap" class="small" data-i18n="copy"></button>
+      </div>
+    </div>
+
+    <div class="panel fix">
+      <h3><span data-i18n="autostart_title"></span>
+        <label class="switch"><input type="checkbox" id="autostart"><span></span></label></h3>
+      <p data-i18n="autostart_desc"></p>
+    </div>
+  </section>
+
+  <h2><span data-i18n="apps_title"></span>
+    <span class="seg"><button data-sort="cpu" data-i18n="sort_cpu"></button><button data-sort="rss" data-i18n="sort_ram"></button></span>
+    <span class="muted small" id="appsHint"></span></h2>
+  <div class="panel tablewrap" style="padding:4px 8px">
+    <table>
+      <thead><tr><th data-i18n="col_app"></th><th class="num">CPU</th><th class="hide-sm"></th><th class="num">RAM</th><th class="actions"></th></tr></thead>
+      <tbody id="groups"></tbody>
+    </table>
+  </div>
+
+  <h2 data-i18n="tips_title"></h2>
+  <div class="panel"><ul class="tips" id="tips"></ul></div>
+  <p class="muted small" id="footer"></p>
+</main>
+<div id="toast"></div>
+
+<script>
+const TOKEN = "__TOKEN__";
+
+const I18N = {
+  en: {
+    other_lang: "Tiếng Việt",
+    status_loading: "Loading…", status_ok: "Stable", status_warn: "Busy", status_bad: "Overloaded", status_offline: "Disconnected",
+    updated: "updated {time}",
+    stat_ram: "Memory", stat_temp: "CPU temperature", stat_pressure: "Pressure (time spent waiting)",
+    freq: "Clock: {cur} / {max} GHz", temp_na: "Not readable on this system", load: "Load: {v}",
+    ram_sub: "of {total} · {free} free · swap {swap}",
+    psi_sub: "CPU {cpu}% · RAM {mem}%", level_normal: "Normal", level_warn: "Elevated", level_critical: "Critical",
+    mem_pressure: "Memory pressure (macOS)",
+    chart_title: "Last 3 minutes", legend_temp: "Temperature (30–100°C)",
+    fixes: "Fixes",
+    guard_title: "1. Lower agent & build priority",
+    guard_desc: "Claude, Codex and everything they start (tsc, node, go build…) run at low priority, so your mouse, keyboard and browser always get the CPU first. Agents keep working; they just give way.",
+    guard_nice: "Priority (nice):", guard_off: "Off",
+    guard_info: "Applied to {n} processes ({cpu}% CPU, {rss}) · lowered {r} times",
+    guard_lists: "Processes it applies to", guard_roots: "Agents (and everything they start):",
+    guard_names: "Build tools (whoever runs them):", save_lists: "Save lists",
+    limits_title: "2. Limits for agents",
+    limits_desc_linux: "Agents and every build they start get a CPU ceiling and a soft memory limit, so the rest of the machine always has room.",
+    limits_desc_macos: "macOS has no hard limits. Agents run in a lower QoS class, so the system schedules them after your apps. “Background” keeps them on the efficiency cores (Apple Silicon).",
+    cpu_cap: "CPU ceiling:", threads: "{n} / {total} threads", mem_cap: "Soft RAM limit per agent:", mem_off: "Off",
+    clamp: "QoS class:", clamp_utility: "Utility (lighter)", clamp_background: "Background (efficiency cores)",
+    terminal: "Terminal", installed: "Installed", not_installed: "Not installed", install: "Install", remove: "Remove",
+    alias_desc: "Alias in {file} for {cmds}. Applies to terminals opened after installing. Backup: {file}.resource-guard.bak",
+    shell_unsupported: "Your login shell isn't bash or zsh, so the alias can't be added automatically.",
+    desktop_desc: "Started from the app menu, so the alias doesn't reach it. One limit shared by the app and the agents inside it; applies now and to every later launch.",
+    desktop_limited: "Limited", desktop_on: "On", desktop_off: "Not limited", desktop_missing: "Not installed",
+    rescue_title: "3. Low-memory rescue",
+    rescue_desc: "When free RAM drops below the threshold, stop the biggest build an agent started (tsc, node, go…) before the machine starts swapping. Agents themselves are never stopped.",
+    rescue_threshold: "When free RAM is below:", rescue_none: "Nothing stopped yet.",
+    rescue_event: "{time}: stopped {name} (PID {pid}, {rss})",
+    power_title: "4. Power mode",
+    power_desc_linux: "When the machine runs hot, Balanced is often smoother than Performance: the CPU doesn't boost and then throttle.",
+    power_desc_macos: "Low Power Mode: {state}. Change it in System Settings → Battery.",
+    power_performance: "Performance", power_balanced: "Balanced", "power_power-saver": "Power saver",
+    power_none: "powerprofilesctl not found.", on: "on", off: "off",
+    swap_title: "5. Fast swap (zram)", swap_on: "Active", swap_off: "Off",
+    swap_on_desc: "{size} of compressed swap in RAM. When memory runs short the machine slows down instead of freezing.",
+    swap_off_desc: "Without zram, full RAM spills to swap on disk, which is what freezes the machine. These commands (Debian/Ubuntu) need sudo, so run them yourself:",
+    copy: "Copy", copied: "Copied",
+    autostart_title: "6. Start at login",
+    autostart_desc: "Runs Resource Guard in the background so items 1 and 3 always work. Dashboard: http://127.0.0.1:8765",
+    apps_title: "Apps using resources", sort_cpu: "By CPU", sort_ram: "By RAM",
+    apps_hint: "100% CPU = one thread; this machine has {n} · click a row for details",
+    col_app: "App", tag_guarded: "lowered", stop_all: "Stop all", stop: "Stop", sure: "Sure?",
+    lower: "Lower priority", system: "system",
+    tips_title: "More tips",
+    tips_linux: [
+      "<b>Chrome:</b> press <code>Shift+Esc</code> for Chrome's task manager, sort by CPU and close the heavy tab or extension. Turn on <i>Settings → Performance → Memory Saver &amp; Energy Saver</i>.",
+      "<b>Chrome:</b> open <code>chrome://gpu</code>. If <i>Video Decode</i> or <i>Rasterization</i> isn't “Hardware accelerated”, video and heavy pages are drawn by the CPU.",
+      "<b>Docker:</b> containers run as root, so they can't be lowered from here. Add <code>--cpus=4 --memory=8g</code> to <code>docker run</code>.",
+      "<b>Heat:</b> above 85°C under light load usually means a dusty fan or dried thermal paste.",
+      "<b>Frozen?</b> Press <code>Ctrl+Alt+F3</code>, log in, run <code>htop</code> and press <code>F9</code> on the top process.",
+    ],
+    tips_macos: [
+      "<b>Chrome:</b> <i>Window → Task Manager</i>, sort by CPU and close the heavy tab or extension. Turn on <i>Settings → Performance → Memory Saver &amp; Energy Saver</i>.",
+      "<b>Activity Monitor</b> → Memory tab: a yellow or red pressure graph means apps are fighting for RAM.",
+      "<b>Docker Desktop:</b> cap CPUs and memory in <i>Settings → Resources</i>; containers can't be lowered from here.",
+      "<b>Frozen?</b> <code>⌘⌥Esc</code> opens Force Quit.",
+    ],
+    footer: "Resource Guard {v} · runs only on this machine (127.0.0.1)",
+    alert_hot: "CPU at {t}°C: it will throttle and slow down. Try Balanced mode and check the fan.",
+    alert_warm: "CPU is warm ({t}°C).",
+    alert_cpu: "CPU near 100%. Top: {name} ({cpu}%).",
+    alert_mem: "Free RAM is low ({free} left). Top: {name} ({rss}).",
+    alert_guard_off: "Priority guard (item 1) is off.",
+    t_saved: "Saved", t_guard_on: "Priority guard on",
+    t_guard_off: "Off. Lowered processes keep their priority until they restart.",
+    t_alias_on: "Installed. Open a new terminal and run your agent as usual.", t_alias_off: "Removed",
+    t_limits: "Saved. New terminals use the new limits.",
+    t_desktop_on: "Claude Desktop is limited", t_desktop_off: "Claude Desktop limit removed",
+    t_autostart_on: "Will start at your next login", t_autostart_off: "Won't start at login",
+    t_power: "Power mode changed", t_stopped_n: "Stopped {n} × {name}", t_stopped_pid: "Stopped PID {pid}",
+    t_reniced: "Lowered priority of PID {pid}",
+    err: "Error: {msg}",
+    e_forbidden: "not allowed", e_bad_request: "bad request", e_bad_pid: "invalid PID",
+    e_cannot_touch: "this process can't be changed", e_gone: "the process has already exited",
+    e_other_user: "it belongs to another user (needs sudo)", e_bad_nice: "nice must be 1–19",
+    e_protected: "{name} is part of the desktop; stopping it would end your session",
+    e_bad_name: "invalid name", e_bad_profile: "unknown power mode", e_bad_choice: "value not allowed",
+    e_bad_list: "lists may only contain letters, digits and . _ + -",
+    e_unsupported: "not supported on this system", e_unsupported_shell: "only bash and zsh are supported",
+    e_command_failed: "{detail}",
+  },
+  vi: {
+    other_lang: "English",
+    status_loading: "Đang tải…", status_ok: "Ổn định", status_warn: "Hơi nặng", status_bad: "Quá tải", status_offline: "Mất kết nối",
+    updated: "cập nhật {time}",
+    stat_ram: "RAM", stat_temp: "Nhiệt độ CPU", stat_pressure: "Áp lực (thời gian phải chờ)",
+    freq: "Xung: {cur} / {max} GHz", temp_na: "Không đọc được trên máy này", load: "Load: {v}",
+    ram_sub: "trên {total} · trống {free} · swap {swap}",
+    psi_sub: "CPU {cpu}% · RAM {mem}%", level_normal: "Bình thường", level_warn: "Cao", level_critical: "Nguy cấp",
+    mem_pressure: "Áp lực RAM (macOS)",
+    chart_title: "3 phút gần nhất", legend_temp: "Nhiệt độ (30–100°C)",
+    fixes: "Khắc phục",
+    guard_title: "1. Tự hạ ưu tiên agent AI & build",
+    guard_desc: "Claude, Codex và mọi thứ chúng chạy (tsc, node, go build…) bị hạ xuống mức ưu tiên thấp, nên chuột, gõ phím và trình duyệt luôn được CPU trước. Agent vẫn chạy, chỉ nhường đường.",
+    guard_nice: "Mức hạ (nice):", guard_off: "Đang tắt",
+    guard_info: "Đang áp dụng cho {n} tiến trình ({cpu}% CPU, {rss}) · đã hạ {r} lần",
+    guard_lists: "Danh sách tiến trình áp dụng", guard_roots: "Agent (kèm mọi tiến trình con):",
+    guard_names: "Công cụ build (dù ai chạy):", save_lists: "Lưu danh sách",
+    limits_title: "2. Giới hạn cho agent",
+    limits_desc_linux: "Agent và mọi build nó chạy bị chặn trần CPU và trần RAM mềm, nên phần còn lại của máy luôn có chỗ.",
+    limits_desc_macos: "macOS không có giới hạn cứng. Agent chạy ở mức QoS thấp hơn nên hệ thống ưu tiên ứng dụng của bạn trước. “Background” giữ agent ở nhân tiết kiệm (Apple Silicon).",
+    cpu_cap: "Trần CPU:", threads: "{n} / {total} luồng", mem_cap: "Trần RAM mềm mỗi agent:", mem_off: "Tắt",
+    clamp: "Mức QoS:", clamp_utility: "Utility (nhẹ)", clamp_background: "Background (nhân tiết kiệm)",
+    terminal: "Terminal", installed: "Đã cài", not_installed: "Chưa cài", install: "Cài đặt", remove: "Gỡ bỏ",
+    alias_desc: "Alias trong {file} cho {cmds}. Áp dụng cho terminal mở sau khi cài. Bản sao lưu: {file}.resource-guard.bak",
+    shell_unsupported: "Shell đăng nhập không phải bash hoặc zsh nên không tự thêm alias được.",
+    desktop_desc: "Mở từ menu ứng dụng nên alias không áp dụng được. Giới hạn chung cho cả ứng dụng và các agent bên trong, có hiệu lực ngay và cho mọi lần mở sau.",
+    desktop_limited: "Đang giới hạn", desktop_on: "Đã bật", desktop_off: "Chưa giới hạn", desktop_missing: "Chưa cài app",
+    rescue_title: "3. Cứu khi thiếu RAM",
+    rescue_desc: "Khi RAM trống xuống dưới ngưỡng, dừng build lớn nhất do agent chạy (tsc, node, go…) trước khi máy phải dùng swap. Agent không bao giờ bị dừng.",
+    rescue_threshold: "Khi RAM trống dưới:", rescue_none: "Chưa phải dừng tiến trình nào.",
+    rescue_event: "{time}: đã dừng {name} (PID {pid}, {rss})",
+    power_title: "4. Chế độ nguồn",
+    power_desc_linux: "Khi máy nóng, Cân bằng thường mượt hơn Hiệu năng vì CPU không bị lên xung rồi tụt xung vì nhiệt.",
+    power_desc_macos: "Low Power Mode: {state}. Đổi trong System Settings → Battery.",
+    power_performance: "Hiệu năng", power_balanced: "Cân bằng", "power_power-saver": "Tiết kiệm",
+    power_none: "Không tìm thấy powerprofilesctl.", on: "bật", off: "tắt",
+    swap_title: "5. Swap nhanh (zram)", swap_on: "Đang bật", swap_off: "Chưa bật",
+    swap_on_desc: "{size} swap nén trong RAM. Khi thiếu RAM máy chỉ chậm lại chứ không đứng.",
+    swap_off_desc: "Không có zram, RAM đầy sẽ tràn xuống swap trên ổ đĩa, đó là lý do máy bị đứng. Các lệnh này (Debian/Ubuntu) cần sudo nên bạn tự chạy:",
+    copy: "Sao chép", copied: "Đã sao chép",
+    autostart_title: "6. Tự chạy khi đăng nhập",
+    autostart_desc: "Chạy Resource Guard nền để mục 1 và 3 luôn hoạt động. Trang quản lý: http://127.0.0.1:8765",
+    apps_title: "Ứng dụng đang dùng tài nguyên", sort_cpu: "Theo CPU", sort_ram: "Theo RAM",
+    apps_hint: "100% CPU = một luồng, máy có {n} luồng · bấm vào dòng để xem chi tiết",
+    col_app: "Ứng dụng", tag_guarded: "đã hạ ưu tiên", stop_all: "Dừng tất cả", stop: "Dừng", sure: "Chắc chắn?",
+    lower: "Hạ ưu tiên", system: "hệ thống",
+    tips_title: "Mẹo thêm",
+    tips_linux: [
+      "<b>Chrome:</b> nhấn <code>Shift+Esc</code> mở Task Manager của Chrome, sắp xếp theo CPU rồi đóng tab hoặc extension nặng. Bật <i>Settings → Performance → Memory Saver &amp; Energy Saver</i>.",
+      "<b>Chrome:</b> mở <code>chrome://gpu</code>. Nếu <i>Video Decode</i> hoặc <i>Rasterization</i> không phải “Hardware accelerated”, video và trang nặng đang được vẽ bằng CPU.",
+      "<b>Docker:</b> container chạy dưới quyền root nên không hạ được từ đây. Thêm <code>--cpus=4 --memory=8g</code> vào <code>docker run</code>.",
+      "<b>Nhiệt độ:</b> trên 85°C khi tải nhẹ thường do quạt bám bụi hoặc keo tản nhiệt khô.",
+      "<b>Máy đơ hẳn?</b> Nhấn <code>Ctrl+Alt+F3</code>, đăng nhập, chạy <code>htop</code> rồi nhấn <code>F9</code> ở tiến trình đứng đầu.",
+    ],
+    tips_macos: [
+      "<b>Chrome:</b> <i>Window → Task Manager</i>, sắp xếp theo CPU rồi đóng tab hoặc extension nặng. Bật <i>Settings → Performance → Memory Saver &amp; Energy Saver</i>.",
+      "<b>Activity Monitor</b> → tab Memory: biểu đồ áp lực màu vàng hoặc đỏ nghĩa là các app đang tranh RAM.",
+      "<b>Docker Desktop:</b> giới hạn CPU và RAM trong <i>Settings → Resources</i>; container không hạ được từ đây.",
+      "<b>Máy đơ?</b> <code>⌘⌥Esc</code> mở Force Quit.",
+    ],
+    footer: "Resource Guard {v} · chỉ chạy trên máy này (127.0.0.1)",
+    alert_hot: "CPU đang {t}°C, máy sẽ tự hạ xung và chậm đi. Chuyển sang Cân bằng và kiểm tra quạt.",
+    alert_warm: "CPU khá nóng ({t}°C).",
+    alert_cpu: "CPU gần 100%. Đứng đầu: {name} ({cpu}%).",
+    alert_mem: "RAM trống còn ít ({free}). Đứng đầu: {name} ({rss}).",
+    alert_guard_off: "Tự hạ ưu tiên (mục 1) đang tắt.",
+    t_saved: "Đã lưu", t_guard_on: "Đã bật tự hạ ưu tiên",
+    t_guard_off: "Đã tắt. Tiến trình đã hạ sẽ giữ mức thấp tới khi khởi động lại.",
+    t_alias_on: "Đã cài. Mở terminal mới rồi chạy agent như bình thường.", t_alias_off: "Đã gỡ",
+    t_limits: "Đã lưu. Terminal mới sẽ dùng giới hạn mới.",
+    t_desktop_on: "Đã giới hạn Claude Desktop", t_desktop_off: "Đã bỏ giới hạn Claude Desktop",
+    t_autostart_on: "Sẽ tự chạy từ lần đăng nhập sau", t_autostart_off: "Đã tắt tự chạy",
+    t_power: "Đã chuyển chế độ nguồn", t_stopped_n: "Đã dừng {n} × {name}", t_stopped_pid: "Đã dừng PID {pid}",
+    t_reniced: "Đã hạ ưu tiên PID {pid}",
+    err: "Lỗi: {msg}",
+    e_forbidden: "không được phép", e_bad_request: "yêu cầu không hợp lệ", e_bad_pid: "PID không hợp lệ",
+    e_cannot_touch: "không thể thao tác với tiến trình này", e_gone: "tiến trình đã kết thúc",
+    e_other_user: "tiến trình của user khác (cần sudo)", e_bad_nice: "nice phải từ 1 đến 19",
+    e_protected: "{name} là thành phần của desktop, dừng nó sẽ làm mất phiên làm việc",
+    e_bad_name: "tên không hợp lệ", e_bad_profile: "chế độ nguồn không hợp lệ", e_bad_choice: "giá trị không hợp lệ",
+    e_bad_list: "danh sách chỉ gồm chữ, số và . _ + -",
+    e_unsupported: "hệ thống này không hỗ trợ", e_unsupported_shell: "chỉ hỗ trợ bash và zsh",
+    e_command_failed: "{detail}",
+  },
+};
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const gb = (b) => (b / 2 ** 30).toFixed(1) + " GB";
+const mb = (b) => b >= 2 ** 30 ? gb(b) : Math.round(b / 2 ** 20) + " MB";
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+};
+
+const urlLang = new URLSearchParams(location.search).get("lang");
+let lang = I18N[urlLang] ? urlLang
+  : store.get("rg-lang") || ((navigator.language || "").toLowerCase().startsWith("vi") ? "vi" : "en");
+let sortBy = store.get("rg-sort") || "cpu";
+let settings = null, lastState = null;
+const expanded = new Set();
+let armed = null; // {key, until}: a second click within 3s confirms a stop
+
+function t(key, params = {}) {
+  const s = I18N[lang][key] ?? I18N.en[key] ?? key;
+  return typeof s === "string" ? s.replace(/\{(\w+)\}/g, (_, k) => params[k] ?? "") : s;
+}
+
+function applyStatic() {
+  document.documentElement.lang = lang;
+  document.querySelectorAll("[data-i18n]").forEach((el) => { el.textContent = t(el.dataset.i18n); });
+  $("lang").textContent = t("other_lang");
+  document.querySelectorAll("[data-sort]").forEach((b) => b.classList.toggle("on", b.dataset.sort === sortBy));
+}
+
+function toast(msg) {
+  const el = $("toast"); el.textContent = msg; el.classList.add("show");
+  clearTimeout(toast.timer); toast.timer = setTimeout(() => el.classList.remove("show"), 3000);
+}
+
+async function post(path, body) {
+  try {
+    const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-Token": TOKEN }, body: JSON.stringify(body) });
+    const data = await r.json();
+    if (!r.ok) throw Object.assign(new Error(data.error), { params: data.params || {} });
+    return data;
+  } catch (e) {
+    toast(t("err", { msg: I18N.en["e_" + e.message] ? t("e_" + e.message, e.params) : e.message }));
+    return null;
+  }
+}
+
+const level = (v, warn, bad) => v == null ? "ok" : v >= bad ? "bad" : v >= warn ? "warn" : "ok";
+const color = (lvl) => lvl === "ok" ? "var(--text)" : `var(--${lvl})`;
+
+function renderState(s) {
+  if (!s || !s.time) return;
+  lastState = s;
+  $("cpu").textContent = Math.round(s.cpu) + "%";
+  $("cpu").style.color = color(level(s.cpu, 70, 90));
+  $("cores").innerHTML = s.cores.map((c) => `<span style="height:${Math.max(4, c)}%;opacity:${0.35 + c / 160}" title="${c}%"></span>`).join("");
+  $("cores").hidden = !s.cores.length;
+  $("load").textContent = t("load", { v: s.load.map((l) => l.toFixed(1)).join(" · ") });
+
+  const used = s.mem.total - s.mem.available;
+  $("ram").textContent = gb(used);
+  $("ram").style.color = color(s.memory_low ? "bad" : level(s.mem_pct, 85, 101));
+  $("ramSub").textContent = t("ram_sub", { total: gb(s.mem.total), free: gb(s.mem.available), swap: gb(s.mem.swap_used) });
+  $("ramBar").style.width = (s.mem_pct || 0) + "%";
+
+  $("temp").textContent = s.temp == null ? "–" : Math.round(s.temp) + "°C";
+  $("temp").style.color = color(level(s.temp, 85, 90));
+  $("freq").textContent = s.temp == null ? t("temp_na") : s.freq ? t("freq", { cur: s.freq, max: s.freq_max }) : "";
+  $("legendTemp").hidden = s.temp == null;
+
+  const pr = s.pressure;
+  if (pr.memory_level) {
+    $("psi").textContent = t("level_" + pr.memory_level);
+    $("psi").style.color = color(pr.memory_level === "critical" ? "bad" : pr.memory_level === "warn" ? "warn" : "ok");
+    $("psiSub").textContent = t("mem_pressure");
+  } else {
+    const worst = Math.max(pr.cpu ?? 0, pr.memory ?? 0);
+    $("psi").textContent = pr.cpu == null ? "–" : Math.round(worst) + "%";
+    $("psi").style.color = color(level(worst, 20, 50));
+    $("psiSub").textContent = pr.cpu == null ? "" : t("psi_sub", { cpu: Math.round(pr.cpu), mem: Math.round(pr.memory ?? 0) });
+  }
+  $("updated").textContent = t("updated", { time: new Date(s.time * 1000).toLocaleTimeString(lang) });
+
+  const byCpu = [...s.groups].sort((a, b) => b.cpu - a.cpu)[0];
+  const byRss = [...s.groups].sort((a, b) => b.rss - a.rss)[0];
+  const alerts = [];
+  if (s.temp >= 90) alerts.push(["bad", t("alert_hot", { t: Math.round(s.temp) })]);
+  else if (s.temp >= 85) alerts.push(["warn", t("alert_warm", { t: Math.round(s.temp) })]);
+  if (s.cpu >= 90 && byCpu) alerts.push(["bad", t("alert_cpu", { name: byCpu.name, cpu: Math.round(byCpu.cpu) })]);
+  if (s.memory_low && byRss) alerts.push(["bad", t("alert_mem", { free: gb(s.mem.available), name: byRss.name, rss: mb(byRss.rss) })]);
+  if (!s.guard.enabled) alerts.push(["warn", t("alert_guard_off")]);
+  $("alerts").innerHTML = alerts.map(([k, m]) => `<div class="alert ${k}">${esc(m)}</div>`).join("");
+
+  const lv = [level(s.cpu, 70, 90), level(s.temp, 85, 90), s.memory_low ? "bad" : "ok",
+              pr.memory_level === "critical" ? "bad" : pr.memory_level === "warn" ? "warn" : level(Math.max(pr.cpu ?? 0, pr.memory ?? 0), 20, 50)];
+  const st = lv.includes("bad") ? "bad" : lv.includes("warn") ? "warn" : "ok";
+  $("status").className = "pill " + st; $("status").textContent = t("status_" + st);
+
+  $("guardInfo").textContent = s.guard.enabled
+    ? t("guard_info", { n: s.guard.active, cpu: Math.round(s.guard.cpu), rss: mb(s.guard.rss), r: s.guard.reniced })
+    : t("guard_off");
+  $("rescueEvents").innerHTML = s.rescue.events.length
+    ? s.rescue.events.map((e) => `<li>${esc(t("rescue_event", { time: new Date(e.time * 1000).toLocaleTimeString(lang), name: e.name, pid: e.pid, rss: mb(e.rss) }))}</li>`).join("")
+    : `<li>${esc(t("rescue_none"))}</li>`;
+  $("appsHint").textContent = t("apps_hint", { n: s.ncpu });
+
+  renderChart(s.history);
+  renderGroups(s);
+}
+
+function renderChart(h) {
+  const n = 90, x = (i) => ((i + n - h.length) / (n - 1)) * 300;
+  const line = (vals, c) => `<polyline fill="none" stroke="${c}" stroke-width="2" vector-effect="non-scaling-stroke" points="${vals.map((v, i) => v == null ? "" : `${x(i).toFixed(1)},${(100 - Math.min(100, Math.max(0, v))).toFixed(1)}`).join(" ")}"/>`;
+  const grid = [25, 50, 75].map((y) => `<line x1="0" x2="300" y1="${y}" y2="${y}" stroke="var(--line)" vector-effect="non-scaling-stroke"/>`).join("");
+  $("chart").innerHTML = grid
+    + line(h.map((p) => p.mem), "var(--mem)")
+    + line(h.map((p) => p.cpu), "var(--accent)")
+    + (h.some((p) => p.temp != null) ? line(h.map((p) => p.temp == null ? null : (p.temp - 30) / 70 * 100), "var(--temp)") : "");
+}
+
+function stopButton(key, label, payload) {
+  const isArmed = armed && armed.key === key && armed.until > Date.now();
+  return `<button class="${isArmed ? "armed" : "danger"}" data-kill='${esc(JSON.stringify(payload))}' data-key="${esc(key)}">${esc(isArmed ? t("sure") : label)}</button>`;
+}
+
+function renderGroups(s) {
+  const groups = [...s.groups].sort((a, b) => sortBy === "rss" ? b.rss - a.rss : b.cpu - a.cpu || b.rss - a.rss).slice(0, 15);
+  const max = sortBy === "rss" ? Math.max(1, ...groups.map((g) => g.rss)) : Math.max(100, ...groups.map((g) => g.cpu));
+  let html = "";
+  for (const g of groups) {
+    const open = expanded.has(g.name);
+    const own = g.procs.some((p) => p.own) && !g.protected;
+    const v = sortBy === "rss" ? g.rss : g.cpu;
+    const hot = sortBy === "rss" ? g.rss >= s.mem.total * 0.25 : g.cpu >= 200;
+    const warm = sortBy === "rss" ? g.rss >= s.mem.total * 0.1 : g.cpu >= 80;
+    const barColor = hot ? "var(--bad)" : warm ? "var(--warn)" : sortBy === "rss" ? "var(--mem)" : "var(--accent)";
+    html += `<tr class="group" data-group="${esc(g.name)}">
+      <td>${open ? "▾" : "▸"} <b>${esc(g.name)}</b> <span class="muted small">×${g.count}</span>${g.guarded ? `<span class="tag">${esc(t("tag_guarded"))}</span>` : ""}</td>
+      <td class="num">${g.cpu.toFixed(0)}%</td>
+      <td class="hide-sm" style="width:28%"><div class="bar"><span style="width:${(v / max) * 100}%;background:${barColor}"></span></div></td>
+      <td class="num">${mb(g.rss)}</td>
+      <td class="actions">${own ? stopButton("g:" + g.name, t("stop_all"), { name: g.name }) : ""}</td></tr>`;
+    if (!open) continue;
+    for (const p of g.procs) {
+      html += `<tr class="proc">
+        <td><div class="cmd" title="${esc(p.cmd)}">${p.pid} · ${esc(p.cmd || g.name)}</div></td>
+        <td class="num">${p.cpu.toFixed(0)}%</td>
+        <td class="hide-sm small muted">nice ${p.nice}</td>
+        <td class="num">${mb(p.rss)}</td>
+        <td class="actions">${p.own
+          ? `<button data-renice="${p.pid}" ${p.nice >= 15 ? "disabled" : ""}>${esc(t("lower"))}</button> ${g.protected ? "" : stopButton("p:" + p.pid, t("stop"), { pid: p.pid })}`
+          : `<span class="muted small">${esc(t("system"))}</span>`}</td></tr>`;
+    }
+  }
+  $("groups").innerHTML = html;
+}
+
+function options(sel, values, label, current) {
+  sel.innerHTML = values.map((v) => `<option value="${esc(v)}" ${v === current ? "selected" : ""}>${esc(label(v))}</option>`).join("");
+}
+
+function renderSettings(st) {
+  settings = st;
+  const c = st.conf, mac = st.platform === "macos";
+  $("guardOn").checked = c.guard_enabled;
+  $("guardNice").value = String(c.guard_nice);
+  if (document.activeElement !== $("guardRoots")) $("guardRoots").value = c.guard_roots.join(", ");
+  if (document.activeElement !== $("guardNames")) $("guardNames").value = c.guard_names.join(", ");
+
+  $("limitsDesc").textContent = t(mac ? "limits_desc_macos" : "limits_desc_linux");
+  $("cpuCapRow").hidden = $("memCapRow").hidden = mac;
+  $("clampRow").hidden = !mac;
+  options($("cpuQuota"), st.choices.cpu_quota, (v) => t("threads", { n: v / 100, total: st.ncpu }), c.cpu_quota);
+  options($("memHigh"), st.choices.mem_high_gb, (v) => v ? v + " GB" : t("mem_off"), c.mem_high_gb);
+  options($("macClamp"), st.choices.mac_clamp, (v) => t("clamp_" + v), c.mac_clamp);
+
+  const a = st.alias;
+  $("aliasState").className = "pill " + (a.installed ? "ok" : "");
+  $("aliasState").textContent = t(a.installed ? "installed" : "not_installed");
+  $("aliasDesc").textContent = a.file ? t("alias_desc", { file: a.file, cmds: a.commands.join(", ") }) : t("shell_unsupported");
+  $("aliasBtn").textContent = t(a.installed ? "remove" : "install");
+  $("aliasBtn").className = a.installed ? "" : "primary";
+  $("aliasBtn").disabled = !a.available && !a.installed;
+
+  const d = st.desktop;
+  $("desktopRow").hidden = mac;
+  $("desktopCap").checked = d.installed;
+  $("desktopCap").disabled = !d.available && !d.installed;
+  $("desktopState").className = "pill " + (d.installed ? "ok" : "");
+  $("desktopState").textContent = t(!d.available ? "desktop_missing" : d.installed ? (d.running ? "desktop_limited" : "desktop_on") : "desktop_off");
+
+  $("rescueOn").checked = c.rescue_enabled;
+  options($("rescuePct"), st.choices.rescue_min_available_pct, (v) => v + "%", c.rescue_min_available_pct);
+
+  const pw = st.power;
+  if (mac) {
+    $("powerDesc").textContent = t("power_desc_macos", { state: t(pw.current === "low-power" ? "on" : "off") });
+    $("power").innerHTML = "";
+  } else {
+    $("powerDesc").textContent = t("power_desc_linux");
+    $("power").innerHTML = pw.profiles.length
+      ? pw.profiles.map((p) => `<button data-power="${esc(p)}" class="${p === pw.current ? "on" : ""}">${esc(t("power_" + p))}${p === pw.current ? " ✓" : ""}</button>`).join("")
+      : `<span class="muted small">${esc(t("power_none"))}</span>`;
+  }
+
+  $("swapCard").hidden = !st.zram;
+  if (st.zram) {
+    $("swapState").className = "pill " + (st.zram.active ? "ok" : "warn");
+    $("swapState").textContent = t(st.zram.active ? "swap_on" : "swap_off");
+    $("swapDesc").textContent = st.zram.active ? t("swap_on_desc", { size: gb(st.zram.size) }) : t("swap_off_desc");
+    $("swapHowto").hidden = st.zram.active;
+  }
+  $("autostart").checked = st.autostart;
+  $("tips").innerHTML = t(mac ? "tips_macos" : "tips_linux").map((li) => `<li>${li}</li>`).join("");
+  $("footer").textContent = t("footer", { v: st.version });
+}
+
+async function refreshState() {
+  try { renderState(await (await fetch("/api/state")).json()); }
+  catch { $("status").className = "pill bad"; $("status").textContent = t("status_offline"); }
+}
+async function refreshSettings() {
+  try { renderSettings(await (await fetch("/api/settings")).json()); } catch {}
+}
+function rerender() { applyStatic(); if (settings) renderSettings(settings); if (lastState) renderState(lastState); }
+
+const splitNames = (v) => v.split(/[\s,]+/).filter(Boolean);
+async function saveConfig(body, okKey) {
+  if (await post("/api/config", body)) toast(t(okKey));
+  refreshSettings(); refreshState();
+}
+
+$("lang").addEventListener("click", () => { lang = lang === "vi" ? "en" : "vi"; store.set("rg-lang", lang); rerender(); });
+$("guardOn").addEventListener("change", (e) => saveConfig({ guard_enabled: e.target.checked }, e.target.checked ? "t_guard_on" : "t_guard_off"));
+$("guardNice").addEventListener("change", (e) => saveConfig({ guard_nice: +e.target.value }, "t_limits"));
+$("saveLists").addEventListener("click", () => saveConfig({ guard_roots: splitNames($("guardRoots").value), guard_names: splitNames($("guardNames").value) }, "t_saved"));
+$("cpuQuota").addEventListener("change", (e) => saveConfig({ cpu_quota: +e.target.value }, "t_limits"));
+$("memHigh").addEventListener("change", (e) => saveConfig({ mem_high_gb: +e.target.value }, "t_limits"));
+$("macClamp").addEventListener("change", (e) => saveConfig({ mac_clamp: e.target.value }, "t_limits"));
+$("rescueOn").addEventListener("change", (e) => saveConfig({ rescue_enabled: e.target.checked }, "t_saved"));
+$("rescuePct").addEventListener("change", (e) => saveConfig({ rescue_min_available_pct: +e.target.value }, "t_saved"));
+$("aliasBtn").addEventListener("click", async () => {
+  const install = !settings.alias.installed;
+  if (await post("/api/alias", { install })) toast(t(install ? "t_alias_on" : "t_alias_off"));
+  refreshSettings();
+});
+$("desktopCap").addEventListener("change", async (e) => {
+  if (await post("/api/desktop", { install: e.target.checked })) toast(t(e.target.checked ? "t_desktop_on" : "t_desktop_off"));
+  refreshSettings();
+});
+$("autostart").addEventListener("change", async (e) => {
+  if (await post("/api/autostart", { enable: e.target.checked })) toast(t(e.target.checked ? "t_autostart_on" : "t_autostart_off"));
+  refreshSettings();
+});
+$("power").addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-power]"); if (!b) return;
+  if (await post("/api/power", { profile: b.dataset.power })) toast(t("t_power"));
+  refreshSettings();
+});
+$("copySwap").addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText($("swapCmd").textContent); toast(t("copied")); } catch {}
+});
+document.querySelectorAll("[data-sort]").forEach((b) => b.addEventListener("click", () => {
+  sortBy = b.dataset.sort; store.set("rg-sort", sortBy); rerender();
+}));
+$("groups").addEventListener("click", async (e) => {
+  const kill = e.target.closest("[data-kill]");
+  const ren = e.target.closest("[data-renice]");
+  if (kill) {
+    const key = kill.dataset.key;
+    if (!(armed && armed.key === key && armed.until > Date.now())) {
+      armed = { key, until: Date.now() + 3000 };
+      kill.className = "armed"; kill.textContent = t("sure");
+      setTimeout(refreshState, 3100);
+      return;
+    }
+    armed = null;
+    const payload = JSON.parse(kill.dataset.kill);
+    const r = await post(payload.name ? "/api/kill-name" : "/api/kill", payload);
+    if (r) toast(payload.name ? t("t_stopped_n", { n: r.killed, name: payload.name }) : t("t_stopped_pid", { pid: payload.pid }));
+    return refreshState();
+  }
+  if (ren) {
+    if (await post("/api/renice", { pid: +ren.dataset.renice, nice: 15 })) toast(t("t_reniced", { pid: ren.dataset.renice }));
+    return refreshState();
+  }
+  const row = e.target.closest("tr.group");
+  if (row) {
+    const n = row.dataset.group;
+    expanded.has(n) ? expanded.delete(n) : expanded.add(n);
+    if (lastState) renderGroups(lastState);
+  }
+});
+
+applyStatic();
+refreshState(); refreshSettings();
+setInterval(refreshState, 2000);
+setInterval(refreshSettings, 15000);
+</script>
+</body>
+</html>

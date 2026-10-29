@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "resource-guard"
+dynamic = ["version"]
+description = "Keep AI coding agents and their builds from freezing your desktop. Local web dashboard for Linux and macOS."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+classifiers = [
+  "Environment :: Web Environment",
+  "Operating System :: MacOS",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Topic :: System :: Monitoring",
+]
+
+[project.scripts]
+resource-guard = "resource_guard.server:main"
+
+[project.urls]
+Homepage = "https://github.com/nqh98/resource-guard"
+
+[tool.setuptools]
+packages = ["resource_guard"]
+
+[tool.setuptools.package-data]
+resource_guard = ["static/*"]
+
+[tool.setuptools.dynamic]
+version = { attr = "resource_guard.__version__" }
