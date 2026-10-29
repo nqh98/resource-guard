@@ -4,6 +4,11 @@
 
 [Tiếng Việt](README.vi.md)
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/dashboard-dark.png">
+  <img alt="Resource Guard dashboard: live CPU, memory and temperature, a 3-minute chart, and switches for agent priority, CPU and memory limits, low-memory rescue, power mode, zram and start at login" src="assets/dashboard-light.png">
+</picture>
+
 Coding agents such as Claude Code and Codex run type-checkers, test suites and builds on
 their own. Each of those wants every core and a few gigabytes of RAM. Run two or three
 agents next to a browser and the machine stops responding: the mouse stutters, typing lags,

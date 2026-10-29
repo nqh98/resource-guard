@@ -4,6 +4,13 @@
 
 [English](README.md)
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/dashboard-dark.png">
+  <img alt="Giao diện Resource Guard: CPU, RAM, nhiệt độ theo thời gian thực, biểu đồ 3 phút và các công tắc hạ ưu tiên agent, giới hạn CPU và RAM, cứu khi thiếu RAM, chế độ nguồn, zram và tự chạy khi đăng nhập" src="assets/dashboard-light.png">
+</picture>
+
+Giao diện có cả tiếng Việt: bấm nút ở góc trên, hoặc mở `http://127.0.0.1:8765/?lang=vi`.
+
 Các agent viết code như Claude Code hay Codex tự chạy type-check, test và build. Mỗi tác vụ
 đó muốn dùng hết các nhân CPU và vài GB RAM. Chạy hai, ba agent cùng trình duyệt là máy
 đứng: chuột giật, gõ phím trễ, và khi hết RAM thì hệ thống đẩy xuống swap trên ổ đĩa rồi treo.
